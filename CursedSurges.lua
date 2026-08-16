@@ -1,22 +1,35 @@
 -- CursedSurges: countdown + waypoint + zone announce for Cursed Surge events
 -- on the Coiled Isle (Midnight 12.1).
 --
--- Data source: C_EventScheduler (the world map's Events tab). Event entries
--- carry areaPoiID, startTime/endTime (epoch seconds); position comes from
--- C_AreaPoiInfo.GetAreaPOIInfo(mapID, areaPoiID). Data must be requested via
--- RequestEvents() and arrives with EVENT_SCHEDULER_UPDATE.
+-- Data source: C_EventScheduler (the world map's Events tab). RequestEvents()
+-- must be called first; data arrives with EVENT_SCHEDULER_UPDATE.
+-- GetScheduledEvents() lists days of entries with epoch startTime/endTime and
+-- keeps the currently running one; GetOngoingEvents() entries carry no times.
+--
+-- The Coiled Isle surge rotation is five 45-minute events cycling back-to-back
+-- (observed build 69299): areaPoiIDs 8936-8940 / eventIDs 42-46. Zone lookup
+-- (GetEventUiMapID) and poi info (name/position) only resolve while an event
+-- is ACTIVE, so we learn each surge's name and fixed location when it runs and
+-- cache them in SavedVariables — after one full lap the addon knows all five.
 
 local ADDON_NAME = ...
-local VERSION = "0.1.0"
+local VERSION = "0.2.0"
 local COILED_ISLE = 2512
+
+local SURGE_POIS = {
+  [8936] = true, [8937] = true, [8938] = true, [8939] = true, [8940] = true,
+}
+-- names observed in-game before the cache existed
+local NAME_SEED = {
+  [8939] = "Mlurkkr Massacre",
+}
 
 local CS = CreateFrame("Frame")
 local ui
 local ticker
 local state = {
-  active = nil,   -- normalized event currently running
-  nextEv = nil,   -- normalized next upcoming event
-  requested = false,
+  active = nil,   -- { areaPoiID, start, endT (may be nil), eventID }
+  nextEv = nil,
 }
 
 local function chat(msg)
@@ -31,7 +44,7 @@ local function safefmt(fmt, ...)
 end
 
 local function fmtDuration(secs)
-  secs = math.max(0, math.floor(secs))
+  secs = math.max(0, math.floor(tonumber(secs) or 0))
   local h = math.floor(secs / 3600)
   local m = math.floor((secs % 3600) / 60)
   local s = secs % 60
@@ -44,86 +57,103 @@ local function fmtDuration(secs)
   end
 end
 
--- ---------------------------------------------------------------- event data
+-- ---------------------------------------------------------------- poi lookup + learning
 
-local function poiInfoFor(ev)
-  local ok, pi = pcall(C_AreaPoiInfo.GetAreaPOIInfo, ev.mapID, ev.areaPoiID)
-  if ok and type(pi) == "table" then return pi end
+-- GetAreaPOIInfo needs the right map, which we only reliably know while the
+-- event is active; try the scheduler's answer, the Coiled Isle, then wherever
+-- the player is standing
+local function poiInfoFor(poiID)
+  local maps = {}
+  local ok, m = pcall(C_EventScheduler.GetEventUiMapID, poiID)
+  if ok and type(m) == "number" then maps[#maps + 1] = m end
+  maps[#maps + 1] = COILED_ISLE
+  local pm = C_Map.GetBestMapForUnit("player")
+  if pm then maps[#maps + 1] = pm end
+  for _, mapID in ipairs(maps) do
+    local ok2, pi = pcall(C_AreaPoiInfo.GetAreaPOIInfo, mapID, poiID)
+    if ok2 and type(pi) == "table" then return pi, mapID end
+  end
+end
+
+local function learn(poiID)
+  if not (CursedSurgesDB and CursedSurgesDB.names) then return end
+  local pi, mapID = poiInfoFor(poiID)
+  if not pi then return end
+  local ok, name = pcall(function() return pi.name .. "" end)
+  if ok and name and name ~= "" then
+    CursedSurgesDB.names[poiID] = name
+  end
+  local pos = pi.position
+  if type(pos) == "table" then
+    local x, y = tonumber(pos.x), tonumber(pos.y)
+    if x and y then
+      CursedSurgesDB.locs[poiID] = { mapID = mapID, x = x, y = y }
+    end
+  end
 end
 
 local function eventName(ev)
-  local pi = poiInfoFor(ev)
-  if pi then
-    local ok, name = pcall(function() return pi.name .. "" end)
-    if ok and name and name ~= "" then return name end
-  end
-  local di = ev.raw and ev.raw.displayInfo
-  if type(di) == "table" then
-    for _, key in ipairs({ "name", "eventName", "title" }) do
-      local ok, name = pcall(function() return di[key] .. "" end)
-      if ok and name and name ~= "" then return name end
-    end
-  end
-  return "Cursed Surge"
+  if not ev then return "Cursed Surge" end
+  local names = CursedSurgesDB and CursedSurgesDB.names
+  return (names and names[ev.areaPoiID]) or "Cursed Surge"
 end
 
 local function eventPosition(ev)
-  local pi = poiInfoFor(ev)
-  local pos = pi and pi.position
-  if type(pos) == "table" then
-    local x = tonumber(pos.x)
-    local y = tonumber(pos.y)
-    if x and y then return ev.mapID, x, y end
-  end
+  if not ev then return end
+  -- live info first (also refreshes the cache), then the learned location
+  learn(ev.areaPoiID)
+  local loc = CursedSurgesDB and CursedSurgesDB.locs and CursedSurgesDB.locs[ev.areaPoiID]
+  if loc then return loc.mapID, loc.x, loc.y end
 end
 
-local function normalize(raw)
-  if type(raw) ~= "table" or not raw.areaPoiID then return end
-  local ok, mapID = pcall(C_EventScheduler.GetEventUiMapID, raw.areaPoiID)
-  if not ok or mapID ~= COILED_ISLE then return end
-  local start = tonumber(raw.startTime)
-  local endT = tonumber(raw.endTime)
-  if not (start and endT) then return end
-  return {
-    raw = raw,
-    areaPoiID = raw.areaPoiID,
-    mapID = mapID,
-    key = raw.eventKey or (tostring(raw.areaPoiID) .. "@" .. tostring(start)),
-    start = start,
-    endT = endT,
-  }
-end
+-- ---------------------------------------------------------------- event data
 
 local function collectEvents()
-  local byKey = {}
-  for _, getter in ipairs({ "GetOngoingEvents", "GetScheduledEvents" }) do
-    local fn = C_EventScheduler[getter]
-    if fn then
-      local ok, list = pcall(fn)
-      if ok and type(list) == "table" then
-        for _, raw in ipairs(list) do
-          local ev = normalize(raw)
-          if ev then byKey[ev.key] = ev end
+  local now = GetServerTime()
+  local active, nextEv
+
+  -- scheduled list carries times and keeps the running event while active
+  local ok, list = pcall(C_EventScheduler.GetScheduledEvents)
+  if ok and type(list) == "table" then
+    for _, raw in ipairs(list) do
+      if type(raw) == "table" and SURGE_POIS[raw.areaPoiID] then
+        local start, endT = tonumber(raw.startTime), tonumber(raw.endTime)
+        if start and endT then
+          local ev = { areaPoiID = raw.areaPoiID, start = start, endT = endT, eventID = raw.eventID }
+          if start <= now and now < endT then
+            if not active or ev.start > active.start then active = ev end
+          elseif start > now then
+            if not nextEv or ev.start < nextEv.start then nextEv = ev end
+          end
         end
       end
     end
   end
-  local now = GetServerTime()
-  local active, nextEv
-  for _, ev in pairs(byKey) do
-    if ev.start <= now and now < ev.endT then
-      if not active or ev.start > active.start then active = ev end
-    elseif ev.start > now then
-      if not nextEv or ev.start < nextEv.start then nextEv = ev end
+
+  -- fallback: ongoing list (no times; end estimated from the POI timer if possible)
+  if not active then
+    local ok2, ong = pcall(C_EventScheduler.GetOngoingEvents)
+    if ok2 and type(ong) == "table" then
+      for _, raw in ipairs(ong) do
+        if type(raw) == "table" and SURGE_POIS[raw.areaPoiID] then
+          local okS, secs = pcall(C_AreaPoiInfo.GetAreaPOISecondsLeft, raw.areaPoiID)
+          active = {
+            areaPoiID = raw.areaPoiID,
+            start = now,
+            endT = (okS and tonumber(secs)) and (now + secs) or nil,
+          }
+        end
+      end
     end
   end
+
   state.active, state.nextEv = active, nextEv
+  if active then learn(active.areaPoiID) end
 end
 
 local function requestEvents()
   if C_EventScheduler and C_EventScheduler.RequestEvents then
     pcall(C_EventScheduler.RequestEvents)
-    state.requested = true
   end
 end
 
@@ -136,10 +166,10 @@ end
 
 local function setWaypoint()
   local ev = targetEvent()
-  if not ev then chat("no Coiled Isle event to point at") return end
+  if not ev then chat("no surge to point at") return end
   local mapID, x, y = eventPosition(ev)
   if not mapID then
-    chat("the event's map position isn't available yet — try once it appears on the map")
+    chat("this surge's location isn't known yet — it's learned the first time each surge runs")
     return
   end
   local name = eventName(ev)
@@ -183,7 +213,10 @@ local function buildAnnounce()
     where = safefmt(" at %.1f, %.1f", x * 100, y * 100) or ""
   end
   if state.active == ev then
-    return safefmt("%s is active on the Coiled Isle%s — ends in %s!", name, where, fmtDuration(ev.endT - now))
+    if ev.endT then
+      return safefmt("%s is active on the Coiled Isle%s — ends in %s!", name, where, fmtDuration(ev.endT - now))
+    end
+    return safefmt("%s is active on the Coiled Isle%s!", name, where)
   else
     return safefmt("%s starts in %s on the Coiled Isle%s", name, fmtDuration(ev.start - now), where)
   end
@@ -288,7 +321,11 @@ local function refreshUI()
   local now = GetServerTime()
   if state.active then
     ui.name:SetText(eventName(state.active))
-    ui.timer:SetText("|cff33ff66Active|r — ends in " .. fmtDuration(state.active.endT - now))
+    if state.active.endT then
+      ui.timer:SetText("|cff33ff66Active|r — ends in " .. fmtDuration(state.active.endT - now))
+    else
+      ui.timer:SetText("|cff33ff66Active now|r")
+    end
     if state.nextEv then
       ui.nextLine:SetText("Next: " .. eventName(state.nextEv) .. " in " .. fmtDuration(state.nextEv.start - now))
     else
@@ -315,12 +352,12 @@ end
 local function onTick()
   local now = GetServerTime()
   -- roll over when the displayed event starts or ends
-  if (state.active and now >= state.active.endT)
+  if (state.active and state.active.endT and now >= state.active.endT)
     or (state.nextEv and now >= state.nextEv.start) then
     rebuild()
     return
   end
-  -- periodic re-request keeps the day's schedule fresh
+  -- periodic re-request keeps the schedule fresh
   if GetTime() - lastRebuild > 300 then
     requestEvents()
     rebuild()
@@ -426,6 +463,18 @@ local function debugDump()
     end
   end
 
+  out("state: active=%s next=%s", tostring(state.active and state.active.areaPoiID),
+    tostring(state.nextEv and state.nextEv.areaPoiID))
+  out("learned names/locations:")
+  if CursedSurgesDB then
+    for poiID in pairs(SURGE_POIS) do
+      local loc = CursedSurgesDB.locs and CursedSurgesDB.locs[poiID]
+      out("  %d: %s | %s", poiID,
+        tostring(CursedSurgesDB.names and CursedSurgesDB.names[poiID]),
+        loc and safefmt("map %d %.4f,%.4f", loc.mapID, loc.x, loc.y) or "no location yet")
+    end
+  end
+
   for _, getter in ipairs({ "GetOngoingEvents", "GetScheduledEvents" }) do
     local fn = C_EventScheduler and C_EventScheduler[getter]
     local ok, list
@@ -442,16 +491,15 @@ local function debugDump()
         if type(raw) == "table" then
           local okM, mapID = pcall(C_EventScheduler.GetEventUiMapID, raw.areaPoiID)
           local mi = okM and mapID and C_Map.GetMapInfo(mapID)
-          local ev = normalize(raw)
-          out("-- [%d]%s map=%s (%s) start %+ds end %+ds | %s", i,
-            ev and " [COILED]" or "", tostring(okM and mapID or "?"),
+          out("-- [%d]%s map=%s (%s) start %+ds end %+ds", i,
+            SURGE_POIS[raw.areaPoiID] and " [SURGE]" or "", tostring(okM and mapID or "?"),
             mi and mi.name or "?", (tonumber(raw.startTime) or 0) - now,
-            (tonumber(raw.endTime) or 0) - now, ev and eventName(ev) or "")
+            (tonumber(raw.endTime) or 0) - now)
           dbgdump(raw, "    ", outLines, 3)
-          if raw.areaPoiID and mapID then
-            local okP, pi = pcall(C_AreaPoiInfo.GetAreaPOIInfo, mapID, raw.areaPoiID)
-            if okP and type(pi) == "table" then
-              out("    poiInfo:")
+          if raw.areaPoiID then
+            local pi, piMap = poiInfoFor(raw.areaPoiID)
+            if pi then
+              out("    poiInfo (via map %s):", tostring(piMap))
               dbgdump(pi, "        ", outLines, 2)
             else
               out("    poiInfo: nil (position not resolvable yet)")
@@ -470,6 +518,8 @@ local function debugDump()
   chat("debug dump in window — Select All + Cmd/Ctrl+C")
 end
 
+-- ---------------------------------------------------------------- slash commands
+
 SLASH_CURSEDSURGES1 = "/cursedsurges"
 SLASH_CURSEDSURGES2 = "/surge"
 SlashCmdList.CURSEDSURGES = function(msg)
@@ -483,7 +533,7 @@ SlashCmdList.CURSEDSURGES = function(msg)
       requestEvents()
       rebuild()
       if not (state.active or state.nextEv) then
-        chat("no Coiled Isle events in the scheduler right now")
+        chat("no surge events in the scheduler right now (data may still be loading — try /surge refresh)")
       end
     end
   elseif cmd == "lock" then
@@ -518,6 +568,11 @@ CS:RegisterEvent("EVENT_SCHEDULER_UPDATE")
 CS:SetScript("OnEvent", function(_, event, arg1)
   if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
     CursedSurgesDB = CursedSurgesDB or {}
+    CursedSurgesDB.names = CursedSurgesDB.names or {}
+    CursedSurgesDB.locs = CursedSurgesDB.locs or {}
+    for poiID, name in pairs(NAME_SEED) do
+      CursedSurgesDB.names[poiID] = CursedSurgesDB.names[poiID] or name
+    end
   elseif event == "PLAYER_ENTERING_WORLD" then
     requestEvents()
     rebuild()
