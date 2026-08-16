@@ -13,15 +13,20 @@
 -- cache them in SavedVariables — after one full lap the addon knows all five.
 
 local ADDON_NAME = ...
-local VERSION = "0.2.0"
+local VERSION = "0.3.0"
 local COILED_ISLE = 2512
 
-local SURGE_POIS = {
-  [8936] = true, [8937] = true, [8938] = true, [8939] = true, [8940] = true,
-}
--- names observed in-game before the cache existed
-local NAME_SEED = {
-  [8939] = "Mlurkkr Massacre",
+-- The five surges and their fixed Coiled Isle locations (coords from Andrew).
+-- 8939 = Mlurkkr Massacre is confirmed from live data; the other four
+-- name<->poiID pairings are inferred from the rotation order (42,44,46,43,45
+-- = 8936,8939,8937,8940,8938) and self-correct from live poi data the first
+-- time each surge runs (learned name/location beats this table).
+local SURGES = {
+  [8939] = { name = "Mlurkkr Massacre",              x = 0.705, y = 0.327 },
+  [8937] = { name = "Siege at the Whispering Marsch", x = 0.671, y = 0.775 },
+  [8940] = { name = "The Malformed Leviathan",       x = 0.467, y = 0.628 },
+  [8938] = { name = "The Broodmother's Nest",        x = 0.457, y = 0.296 },
+  [8936] = { name = "The Looming Mutagenior",        x = 0.264, y = 0.649 },
 }
 
 local CS = CreateFrame("Frame")
@@ -95,15 +100,20 @@ end
 local function eventName(ev)
   if not ev then return "Cursed Surge" end
   local names = CursedSurgesDB and CursedSurgesDB.names
-  return (names and names[ev.areaPoiID]) or "Cursed Surge"
+  local learned = names and names[ev.areaPoiID]
+  if learned then return learned end
+  local s = SURGES[ev.areaPoiID]
+  return (s and s.name) or "Cursed Surge"
 end
 
 local function eventPosition(ev)
   if not ev then return end
-  -- live info first (also refreshes the cache), then the learned location
+  -- live info first (also refreshes the cache), then learned, then the built-in table
   learn(ev.areaPoiID)
   local loc = CursedSurgesDB and CursedSurgesDB.locs and CursedSurgesDB.locs[ev.areaPoiID]
   if loc then return loc.mapID, loc.x, loc.y end
+  local s = SURGES[ev.areaPoiID]
+  if s then return COILED_ISLE, s.x, s.y end
 end
 
 -- ---------------------------------------------------------------- event data
@@ -116,7 +126,7 @@ local function collectEvents()
   local ok, list = pcall(C_EventScheduler.GetScheduledEvents)
   if ok and type(list) == "table" then
     for _, raw in ipairs(list) do
-      if type(raw) == "table" and SURGE_POIS[raw.areaPoiID] then
+      if type(raw) == "table" and SURGES[raw.areaPoiID] then
         local start, endT = tonumber(raw.startTime), tonumber(raw.endTime)
         if start and endT then
           local ev = { areaPoiID = raw.areaPoiID, start = start, endT = endT, eventID = raw.eventID }
@@ -135,7 +145,7 @@ local function collectEvents()
     local ok2, ong = pcall(C_EventScheduler.GetOngoingEvents)
     if ok2 and type(ong) == "table" then
       for _, raw in ipairs(ong) do
-        if type(raw) == "table" and SURGE_POIS[raw.areaPoiID] then
+        if type(raw) == "table" and SURGES[raw.areaPoiID] then
           local okS, secs = pcall(C_AreaPoiInfo.GetAreaPOISecondsLeft, raw.areaPoiID)
           active = {
             areaPoiID = raw.areaPoiID,
@@ -467,7 +477,7 @@ local function debugDump()
     tostring(state.nextEv and state.nextEv.areaPoiID))
   out("learned names/locations:")
   if CursedSurgesDB then
-    for poiID in pairs(SURGE_POIS) do
+    for poiID in pairs(SURGES) do
       local loc = CursedSurgesDB.locs and CursedSurgesDB.locs[poiID]
       out("  %d: %s | %s", poiID,
         tostring(CursedSurgesDB.names and CursedSurgesDB.names[poiID]),
@@ -492,7 +502,7 @@ local function debugDump()
           local okM, mapID = pcall(C_EventScheduler.GetEventUiMapID, raw.areaPoiID)
           local mi = okM and mapID and C_Map.GetMapInfo(mapID)
           out("-- [%d]%s map=%s (%s) start %+ds end %+ds", i,
-            SURGE_POIS[raw.areaPoiID] and " [SURGE]" or "", tostring(okM and mapID or "?"),
+            SURGES[raw.areaPoiID] and " [SURGE]" or "", tostring(okM and mapID or "?"),
             mi and mi.name or "?", (tonumber(raw.startTime) or 0) - now,
             (tonumber(raw.endTime) or 0) - now)
           dbgdump(raw, "    ", outLines, 3)
@@ -570,9 +580,6 @@ CS:SetScript("OnEvent", function(_, event, arg1)
     CursedSurgesDB = CursedSurgesDB or {}
     CursedSurgesDB.names = CursedSurgesDB.names or {}
     CursedSurgesDB.locs = CursedSurgesDB.locs or {}
-    for poiID, name in pairs(NAME_SEED) do
-      CursedSurgesDB.names[poiID] = CursedSurgesDB.names[poiID] or name
-    end
   elseif event == "PLAYER_ENTERING_WORLD" then
     requestEvents()
     rebuild()
