@@ -13,7 +13,7 @@
 -- cache them in SavedVariables — after one full lap the addon knows all five.
 
 local ADDON_NAME = ...
-local VERSION = "1.0.0"
+local VERSION = "1.1.0"
 local COILED_ISLE = 2512
 
 local SURGE_BLOCK = 2700  -- scheduler slot length (45 min)
@@ -136,7 +136,8 @@ local function collectEvents()
         if start and endT then
           -- the fight ends SURGE_WINDOW after start, not at the 45-min slot end
           local ev = { areaPoiID = raw.areaPoiID, start = start,
-            endT = math.min(endT, start + SURGE_WINDOW), eventID = raw.eventID }
+            endT = math.min(endT, start + SURGE_WINDOW), eventID = raw.eventID,
+            key = raw.eventKey or (tostring(raw.areaPoiID) .. "@" .. tostring(start)) }
           if start <= now and now < ev.endT then
             if not active or ev.start > active.start then active = ev end
           elseif start > now then
@@ -161,7 +162,8 @@ local function collectEvents()
             endT = now + tonumber(secs) - (SURGE_BLOCK - SURGE_WINDOW)
           end
           if not endT or endT > now then
-            active = { areaPoiID = raw.areaPoiID, start = now, endT = endT }
+            active = { areaPoiID = raw.areaPoiID, start = now, endT = endT,
+              key = "ongoing:" .. tostring(raw.areaPoiID) }
           end
         end
       end
@@ -170,6 +172,21 @@ local function collectEvents()
 
   state.active, state.nextEv = active, nextEv
   if active then learn(active.areaPoiID) end
+end
+
+-- ready-check sound when a surge goes live; deduped by event key so schedule
+-- refreshes can't re-fire it. The key is remembered even with sound off, so
+-- enabling mid-surge doesn't retro-alert.
+local lastAlertKey
+
+local function maybeAlert()
+  local a = state.active
+  if not a or a.key == lastAlertKey then return end
+  lastAlertKey = a.key
+  if CursedSurgesDB and CursedSurgesDB.sound then
+    PlaySound(SOUNDKIT.READY_CHECK, "Master")
+    chat(eventName(a) .. " is live!")
+  end
 end
 
 local function requestEvents()
@@ -322,6 +339,23 @@ local function ensureUI()
   ui.announceBtn:SetScript("OnClick", function()
     local msg = buildAnnounce()
     if not msg then chat("nothing to announce") return end
+    -- "group" resolves to the chat the player is actually in; solo falls
+    -- through to zone with a note
+    if CursedSurgesDB.announceTarget == "group" then
+      local chatType
+      if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
+        chatType = "INSTANCE_CHAT"
+      elseif IsInRaid() then
+        chatType = "RAID"
+      elseif IsInGroup() then
+        chatType = "PARTY"
+      end
+      if chatType then
+        SendChatMessage(msg, chatType)
+        return
+      end
+      chat("not in a group — announcing to zone chat instead")
+    end
     local idx = zoneChannelIndex()
     if not idx then
       chat("couldn't find the zone General channel — announcing in /say instead")
@@ -329,6 +363,28 @@ local function ensureUI()
       return
     end
     SendChatMessage(msg, "CHANNEL", nil, idx)
+  end)
+
+  -- right-click the panel for settings
+  ui:SetScript("OnMouseUp", function(_, btn)
+    if btn ~= "RightButton" then return end
+    if not (MenuUtil and MenuUtil.CreateContextMenu) then
+      chat("settings: /surge sound on|off, /surge announce zone|group")
+      return
+    end
+    MenuUtil.CreateContextMenu(ui, function(_, root)
+      root:CreateTitle("Cursed Surges")
+      root:CreateCheckbox("Audio alert when a surge starts",
+        function() return CursedSurgesDB.sound end,
+        function() CursedSurgesDB.sound = not CursedSurgesDB.sound end)
+      root:CreateTitle("Announce to")
+      root:CreateRadio("Zone chat",
+        function() return CursedSurgesDB.announceTarget ~= "group" end,
+        function() CursedSurgesDB.announceTarget = "zone" end)
+      root:CreateRadio("Group (party/raid/instance)",
+        function() return CursedSurgesDB.announceTarget == "group" end,
+        function() CursedSurgesDB.announceTarget = "group" end)
+    end)
   end)
 
   if CursedSurgesDB.pos then
@@ -376,6 +432,7 @@ local lastRebuild = 0
 local function rebuild()
   lastRebuild = GetTime()
   collectEvents()
+  maybeAlert()
   refreshUI()
 end
 
@@ -553,7 +610,7 @@ end
 SLASH_CURSEDSURGES1 = "/cursedsurges"
 SLASH_CURSEDSURGES2 = "/surge"
 SlashCmdList.CURSEDSURGES = function(msg)
-  local cmd = (msg or ""):lower():match("^(%S*)")
+  local cmd, rest = (msg or ""):lower():match("^(%S*)%s*(.-)$")
   if cmd == "" or cmd == "toggle" then
     if ui and ui:IsShown() then
       ui.userHidden = true
@@ -583,10 +640,26 @@ SlashCmdList.CURSEDSURGES = function(msg)
     requestEvents()
     rebuild()
     chat("refreshed")
+  elseif cmd == "sound" then
+    if rest == "on" then
+      CursedSurgesDB.sound = true
+    elseif rest == "off" then
+      CursedSurgesDB.sound = false
+    else
+      CursedSurgesDB.sound = not CursedSurgesDB.sound
+    end
+    chat("audio alert " .. (CursedSurgesDB.sound and "ON" or "OFF"))
+  elseif cmd == "announce" then
+    if rest == "zone" or rest == "group" then
+      CursedSurgesDB.announceTarget = rest
+    end
+    chat("announce target: " .. (CursedSurgesDB.announceTarget == "group"
+      and "group (party/raid/instance, zone when solo)" or "zone chat")
+      .. "  (/surge announce zone|group)")
   elseif cmd == "debug" then
     debugDump()
   else
-    chat("commands: /surge (toggle), lock, unlock, reset, refresh, debug")
+    chat("commands: /surge (toggle), lock, unlock, reset, refresh, sound on|off, announce zone|group, debug — or right-click the panel")
   end
 end
 
@@ -600,6 +673,8 @@ CS:SetScript("OnEvent", function(_, event, arg1)
     CursedSurgesDB = CursedSurgesDB or {}
     CursedSurgesDB.names = CursedSurgesDB.names or {}
     CursedSurgesDB.locs = CursedSurgesDB.locs or {}
+    if CursedSurgesDB.sound == nil then CursedSurgesDB.sound = true end
+    CursedSurgesDB.announceTarget = CursedSurgesDB.announceTarget or "zone"
   elseif event == "PLAYER_ENTERING_WORLD" then
     requestEvents()
     rebuild()
