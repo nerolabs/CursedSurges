@@ -6,5 +6,6 @@
 ## SavedVariables: CursedSurgesDB
 ## IconTexture: Interface\Icons\Spell_Nature_CallStorm
 ## X-Curse-Project-ID: 1655112
+## X-Wago-ID: ZKxZlyNk
 
 CursedSurges.lua
