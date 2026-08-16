@@ -1,0 +1,32 @@
+# Packages the addon and uploads it to CurseForge + Wago + GitHub Releases
+# whenever a version tag (e.g. v1.0.4) is pushed.
+#
+# Setup, once per host (each is skipped automatically until BOTH its TOC id and
+# its actions secret exist):
+#   CurseForge  — TOC: `## X-Curse-Project-ID: <id>`  +  secret: CF_API_KEY
+#     (token: https://authors.curseforge.com/account/api-tokens)
+#   Wago Addons — TOC: `## X-Wago-ID: <id>`  +  secret: WAGO_API_TOKEN
+#     (token: https://addons.wago.io/account/apikeys)
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: BigWigsMods/packager@v2
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+          WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}

@@ -1,0 +1,8 @@
+## Interface: 120100
+## Title: SurgeProbe
+## Notes: API probe for Cursed Surge events / world map Events tab (CursedSurges dev tool)
+## Author: Andrew + Claude
+## Version: 0.1.0
+## SavedVariables: SurgeProbeDB
+
+SurgeProbe.lua
