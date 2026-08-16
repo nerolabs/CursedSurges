@@ -11,7 +11,8 @@ If you're chasing the Cursed Surge events on the Coiled Isle, this is a small qu
 - **Countdown to the next surge** read from the game's own event schedule (the world map's Events tab data), plus an **Active** timer while one is running. It treats a surge as over ~5 minutes after it starts — if you weren't there at the start, it's done.
 - **Next surge preview** by name while one is active.
 - **Waypoint button** — drops a map pin (and a TomTom waypoint if you have TomTom) at the surge's fixed location. Works for upcoming surges too.
-- **Announce button** — posts the surge, coords, and a clickable map pin link to zone chat. (This came from zone-chat feedback during testing — people kept asking for the pin.)
+- **Announce button** — posts the surge, coords, and a clickable map pin link to zone chat, or to party/raid/instance chat if you'd rather not spam the zone. (The pin link came from zone-chat feedback during testing — people kept asking for it.)
+- **Audio alert** — the ready-check sound the moment a surge goes live. On by default, toggleable.
 
 The panel auto-appears when the scheduler has Coiled Isle events and hides otherwise. `/surge` to toggle; the window is draggable/lockable.
 
