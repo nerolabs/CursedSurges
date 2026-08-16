@@ -329,41 +329,145 @@ local function onTick()
   refreshUI()
 end
 
--- ---------------------------------------------------------------- slash commands
+-- ---------------------------------------------------------------- debug window
+
+local dbgWin
+local function ensureDebugWindow()
+  if dbgWin then return dbgWin end
+  dbgWin = CreateFrame("Frame", "CursedSurgesDebugWindow", UIParent, "BackdropTemplate")
+  dbgWin:SetSize(680, 460)
+  dbgWin:SetPoint("CENTER")
+  dbgWin:SetMovable(true)
+  dbgWin:EnableMouse(true)
+  dbgWin:RegisterForDrag("LeftButton")
+  dbgWin:SetScript("OnDragStart", dbgWin.StartMoving)
+  dbgWin:SetScript("OnDragStop", dbgWin.StopMovingOrSizing)
+  dbgWin:SetFrameStrata("DIALOG")
+  dbgWin:SetBackdrop({
+    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+    tile = true, tileSize = 32, edgeSize = 32,
+    insets = { left = 8, right = 8, top = 8, bottom = 8 },
+  })
+
+  local title = dbgWin:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  title:SetPoint("TOP", 0, -16)
+  title:SetText("CursedSurges debug — Select All, then Cmd/Ctrl+C")
+
+  local scroll = CreateFrame("ScrollFrame", "CursedSurgesDebugScroll", dbgWin, "UIPanelScrollFrameTemplate")
+  scroll:SetPoint("TOPLEFT", 16, -38)
+  scroll:SetPoint("BOTTOMRIGHT", -36, 46)
+
+  local eb = CreateFrame("EditBox", nil, scroll)
+  eb:SetMultiLine(true)
+  eb:SetFontObject(ChatFontNormal)
+  eb:SetWidth(620)
+  eb:SetAutoFocus(false)
+  eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+  eb:SetScript("OnTextChanged", function(self) self:SetWidth(620) end)
+  scroll:SetScrollChild(eb)
+  dbgWin.editBox = eb
+
+  local selectBtn = CreateFrame("Button", nil, dbgWin, "UIPanelButtonTemplate")
+  selectBtn:SetSize(110, 24)
+  selectBtn:SetPoint("BOTTOMLEFT", 16, 14)
+  selectBtn:SetText("Select All")
+  selectBtn:SetScript("OnClick", function()
+    eb:SetFocus()
+    eb:HighlightText()
+  end)
+
+  local closeBtn = CreateFrame("Button", nil, dbgWin, "UIPanelCloseButton")
+  closeBtn:SetPoint("TOPRIGHT", -6, -6)
+
+  return dbgWin
+end
+
+local function dbgval(v)
+  local tv = type(v)
+  if tv == "string" then
+    local ok, s = pcall(function() return (v:gsub("|", "||")) end)
+    return ok and ("%q"):format(s) or "<secret string>"
+  end
+  return tostring(v)
+end
+
+-- shallow-ish dump: scalars at both levels, functions skipped (vector mixins are noisy)
+local function dbgdump(t, prefix, outLines, depth)
+  local keys = {}
+  for k in pairs(t) do keys[#keys + 1] = k end
+  table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+  for _, k in ipairs(keys) do
+    local v = t[k]
+    if type(v) == "table" and depth > 1 then
+      outLines[#outLines + 1] = prefix .. tostring(k) .. " = {"
+      dbgdump(v, prefix .. "    ", outLines, depth - 1)
+      outLines[#outLines + 1] = prefix .. "}"
+    elseif type(v) ~= "function" then
+      outLines[#outLines + 1] = prefix .. tostring(k) .. " = " .. dbgval(v)
+    end
+  end
+end
 
 local function debugDump()
-  chat(("v%s | HasData=%s"):format(VERSION,
-    tostring(C_EventScheduler and C_EventScheduler.HasData and select(2, pcall(C_EventScheduler.HasData)))))
+  local outLines = {}
+  local function out(fmt, ...)
+    outLines[#outLines + 1] = safefmt(fmt, ...) or tostring(fmt)
+  end
+
   local now = GetServerTime()
+  out("CursedSurges v%s | server time %d (%s) | player map %s",
+    VERSION, now, date("%H:%M:%S"), tostring(C_Map.GetBestMapForUnit("player")))
+  for _, probe in ipairs({ "HasData", "CanShowEvents", "GetActiveContinentName" }) do
+    local fn = C_EventScheduler and C_EventScheduler[probe]
+    if fn then
+      local ok, v = pcall(fn)
+      out("%s = %s", probe, ok and tostring(v) or ("ERR " .. tostring(v)))
+    end
+  end
+
   for _, getter in ipairs({ "GetOngoingEvents", "GetScheduledEvents" }) do
     local fn = C_EventScheduler and C_EventScheduler[getter]
     local ok, list
     if fn then ok, list = pcall(fn) end
     if not ok or type(list) ~= "table" then
-      chat(("%s: no table (%s)"):format(getter, tostring(list)))
+      out("== %s: no table (%s) ==", getter, tostring(list))
     else
-      chat(("%s: %d entries"):format(getter, #list))
+      out("== %s: %d entries ==", getter, #list)
       if #list == 0 and next(list) ~= nil then
-        -- not a plain array — show its shape so we can adapt
-        for k, v in pairs(list) do
-          chat(("  key %s = %s"):format(tostring(k), tostring(v)))
-        end
+        out("(not a plain array — raw shape below)")
+        dbgdump(list, "  ", outLines, 3)
       end
-      for _, raw in ipairs(list) do
+      for i, raw in ipairs(list) do
         if type(raw) == "table" then
           local okM, mapID = pcall(C_EventScheduler.GetEventUiMapID, raw.areaPoiID)
           local mi = okM and mapID and C_Map.GetMapInfo(mapID)
           local ev = normalize(raw)
-          chat(safefmt("  poi=%s map=%s (%s) start %+ds end %+ds%s | %s",
-            tostring(raw.areaPoiID), tostring(okM and mapID or "?"),
+          out("-- [%d]%s map=%s (%s) start %+ds end %+ds | %s", i,
+            ev and " [COILED]" or "", tostring(okM and mapID or "?"),
             mi and mi.name or "?", (tonumber(raw.startTime) or 0) - now,
-            (tonumber(raw.endTime) or 0) - now,
-            ev and " [COILED]" or "",
-            ev and eventName(ev) or "") or "  <entry>")
+            (tonumber(raw.endTime) or 0) - now, ev and eventName(ev) or "")
+          dbgdump(raw, "    ", outLines, 3)
+          if raw.areaPoiID and mapID then
+            local okP, pi = pcall(C_AreaPoiInfo.GetAreaPOIInfo, mapID, raw.areaPoiID)
+            if okP and type(pi) == "table" then
+              out("    poiInfo:")
+              dbgdump(pi, "        ", outLines, 2)
+            else
+              out("    poiInfo: nil (position not resolvable yet)")
+            end
+          end
+        else
+          out("-- [%d] = %s", i, dbgval(raw))
         end
       end
     end
   end
+
+  local w = ensureDebugWindow()
+  w.editBox:SetText(table.concat(outLines, "\n"))
+  w:Show()
+  chat("debug dump in window — Select All + Cmd/Ctrl+C")
 end
 
 SLASH_CURSEDSURGES1 = "/cursedsurges"
