@@ -1,0 +1,9 @@
+## Interface: 120100
+## Title: CursedSurges
+## Notes: Countdown, waypoint, and zone announce for Cursed Surge events on the Coiled Isle
+## Author: Andrew
+## Version: 0.1.0
+## SavedVariables: CursedSurgesDB
+## IconTexture: Interface\Icons\Spell_Nature_CallStorm
+
+CursedSurges.lua
