@@ -337,10 +337,18 @@ local function debugDump()
   local now = GetServerTime()
   for _, getter in ipairs({ "GetOngoingEvents", "GetScheduledEvents" }) do
     local fn = C_EventScheduler and C_EventScheduler[getter]
-    local ok, list = fn and pcall(fn)
-    local n = (ok and type(list) == "table") and #list or 0
-    chat(("%s: %d entries"):format(getter, n))
-    if ok and type(list) == "table" then
+    local ok, list
+    if fn then ok, list = pcall(fn) end
+    if not ok or type(list) ~= "table" then
+      chat(("%s: no table (%s)"):format(getter, tostring(list)))
+    else
+      chat(("%s: %d entries"):format(getter, #list))
+      if #list == 0 and next(list) ~= nil then
+        -- not a plain array — show its shape so we can adapt
+        for k, v in pairs(list) do
+          chat(("  key %s = %s"):format(tostring(k), tostring(v)))
+        end
+      end
       for _, raw in ipairs(list) do
         if type(raw) == "table" then
           local okM, mapID = pcall(C_EventScheduler.GetEventUiMapID, raw.areaPoiID)
