@@ -13,7 +13,7 @@
 -- cache them in SavedVariables — after one full lap the addon knows all five.
 
 local ADDON_NAME = ...
-local VERSION = "0.3.2"
+local VERSION = "1.0.0"
 local COILED_ISLE = 2512
 
 local SURGE_BLOCK = 2700  -- scheduler slot length (45 min)
