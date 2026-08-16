@@ -13,7 +13,7 @@
 -- cache them in SavedVariables — after one full lap the addon knows all five.
 
 local ADDON_NAME = ...
-local VERSION = "0.3.1"
+local VERSION = "0.3.2"
 local COILED_ISLE = 2512
 
 local SURGE_BLOCK = 2700  -- scheduler slot length (45 min)
@@ -223,6 +223,14 @@ local function zoneChannelIndex()
   end
 end
 
+-- clickable pin in chat — same link the game makes when you shift-click a
+-- map pin into the chat box; readers click it to get the spot on their map
+local function pinLink(mapID, x, y)
+  return safefmt("|cffffff00|Hworldmap:%d:%d:%d|h[%s]|h|r",
+    mapID, math.floor(x * 10000 + 0.5), math.floor(y * 10000 + 0.5),
+    MAP_PIN_HYPERLINK or "Map Pin Location")
+end
+
 local function buildAnnounce()
   local ev = targetEvent()
   if not ev then return end
@@ -230,8 +238,9 @@ local function buildAnnounce()
   local now = GetServerTime()
   local mapID, x, y = eventPosition(ev)
   local where = ""
-  if x and y then
-    where = safefmt(" at %.1f, %.1f", x * 100, y * 100) or ""
+  if mapID and x and y then
+    local link = pinLink(mapID, x, y)
+    where = safefmt(" at %.1f, %.1f %s", x * 100, y * 100, link or "") or ""
   end
   if state.active == ev then
     if ev.endT then
