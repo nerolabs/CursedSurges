@@ -368,23 +368,27 @@ local function ensureUI()
   -- right-click the panel for settings
   ui:SetScript("OnMouseUp", function(_, btn)
     if btn ~= "RightButton" then return end
-    if not (MenuUtil and MenuUtil.CreateContextMenu) then
-      chat("settings: /surge sound on|off, /surge announce zone|group")
-      return
-    end
-    MenuUtil.CreateContextMenu(ui, function(_, root)
-      root:CreateTitle("Cursed Surges")
-      root:CreateCheckbox("Audio alert when a surge starts",
-        function() return CursedSurgesDB.sound end,
-        function() CursedSurgesDB.sound = not CursedSurgesDB.sound end)
-      root:CreateTitle("Announce to")
-      root:CreateRadio("Zone chat",
-        function() return CursedSurgesDB.announceTarget ~= "group" end,
-        function() CursedSurgesDB.announceTarget = "zone" end)
-      root:CreateRadio("Group (party/raid/instance)",
-        function() return CursedSurgesDB.announceTarget == "group" end,
-        function() CursedSurgesDB.announceTarget = "group" end)
+    local ok, err = pcall(function()
+      if not (MenuUtil and MenuUtil.CreateContextMenu) then
+        error("MenuUtil unavailable", 0)
+      end
+      MenuUtil.CreateContextMenu(ui, function(_, root)
+        root:CreateTitle("Cursed Surges")
+        root:CreateCheckbox("Audio alert when a surge starts",
+          function() return CursedSurgesDB.sound end,
+          function() CursedSurgesDB.sound = not CursedSurgesDB.sound end)
+        root:CreateTitle("Announce to")
+        root:CreateRadio("Zone chat",
+          function() return CursedSurgesDB.announceTarget ~= "group" end,
+          function() CursedSurgesDB.announceTarget = "zone" end)
+        root:CreateRadio("Group (party/raid/instance)",
+          function() return CursedSurgesDB.announceTarget == "group" end,
+          function() CursedSurgesDB.announceTarget = "group" end)
+      end)
     end)
+    if not ok then
+      chat("settings menu failed (" .. tostring(err) .. ") — use /surge sound on|off and /surge announce zone|group")
+    end
   end)
 
   if CursedSurgesDB.pos then
