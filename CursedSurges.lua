@@ -13,8 +13,13 @@
 -- cache them in SavedVariables — after one full lap the addon knows all five.
 
 local ADDON_NAME = ...
-local VERSION = "0.3.0"
+local VERSION = "0.3.1"
 local COILED_ISLE = 2512
+
+local SURGE_BLOCK = 2700  -- scheduler slot length (45 min)
+-- The fight itself is over within ~5 minutes of the scheduled start (Andrew's
+-- rule: if you weren't there in 0:00-5:00, it's OVER) — treat that as the end
+local SURGE_WINDOW = 300
 
 -- The five surges and their fixed Coiled Isle locations (coords from Andrew).
 -- 8939 = Mlurkkr Massacre is confirmed from live data; the other four
@@ -129,8 +134,10 @@ local function collectEvents()
       if type(raw) == "table" and SURGES[raw.areaPoiID] then
         local start, endT = tonumber(raw.startTime), tonumber(raw.endTime)
         if start and endT then
-          local ev = { areaPoiID = raw.areaPoiID, start = start, endT = endT, eventID = raw.eventID }
-          if start <= now and now < endT then
+          -- the fight ends SURGE_WINDOW after start, not at the 45-min slot end
+          local ev = { areaPoiID = raw.areaPoiID, start = start,
+            endT = math.min(endT, start + SURGE_WINDOW), eventID = raw.eventID }
+          if start <= now and now < ev.endT then
             if not active or ev.start > active.start then active = ev end
           elseif start > now then
             if not nextEv or ev.start < nextEv.start then nextEv = ev end
@@ -146,12 +153,16 @@ local function collectEvents()
     if ok2 and type(ong) == "table" then
       for _, raw in ipairs(ong) do
         if type(raw) == "table" and SURGES[raw.areaPoiID] then
+          -- secondsLeft counts to the 45-min slot end; the fight window closes
+          -- SURGE_BLOCK - SURGE_WINDOW earlier
           local okS, secs = pcall(C_AreaPoiInfo.GetAreaPOISecondsLeft, raw.areaPoiID)
-          active = {
-            areaPoiID = raw.areaPoiID,
-            start = now,
-            endT = (okS and tonumber(secs)) and (now + secs) or nil,
-          }
+          local endT
+          if okS and tonumber(secs) then
+            endT = now + tonumber(secs) - (SURGE_BLOCK - SURGE_WINDOW)
+          end
+          if not endT or endT > now then
+            active = { areaPoiID = raw.areaPoiID, start = now, endT = endT }
+          end
         end
       end
     end
