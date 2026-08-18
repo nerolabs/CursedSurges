@@ -13,7 +13,7 @@
 -- cache them in SavedVariables — after one full lap the addon knows all five.
 
 local ADDON_NAME = ...
-local VERSION = "1.1.0"
+local VERSION = "1.2.0"
 local COILED_ISLE = 2512
 
 local SURGE_BLOCK = 2700  -- scheduler slot length (45 min)
@@ -33,6 +33,251 @@ local SURGES = {
   [8938] = { name = "The Broodmother's Nest",        x = 0.457, y = 0.296 },
   [8936] = { name = "The Looming Mutagenior",        x = 0.264, y = 0.649 },
 }
+
+
+-- ---------------------------------------------------------------- localization
+-- All player-facing strings go through L. Built-in surge names stay English as
+-- fallbacks only: the addon learns each locale's real names from live event
+-- data, and the announce zone name comes localized from C_Map.GetMapInfo.
+-- Translations are machine-assisted -- corrections welcome on GitHub.
+local LOCALES = {
+  deDE = {
+    ["Starts in %s"] = "Beginnt in %s",
+    ["Active"] = "Aktiv",
+    ["ends in %s"] = "endet in %s",
+    ["Next: %s in %s"] = "Als N\195\164chstes: %s in %s",
+    ["Waypoint"] = "Wegpunkt",
+    ["Announce"] = "Ank\195\188ndigen",
+    ["Settings"] = "Einstellungen",
+    ["Audio alert when a surge starts"] = "Tonsignal, wenn ein Ereignis beginnt",
+    ["Announce to"] = "Ank\195\188ndigen in",
+    ["Zone chat"] = "Zonenchat",
+    ["Group (party/raid/instance)"] = "Gruppe (Gruppe/Schlachtzug/Instanz)",
+    ["%s is live!"] = "%s hat begonnen!",
+    ["%s is active on %s%s - ends in %s!"] = "%s ist aktiv auf %s%s - endet in %s!",
+    ["%s is active on %s%s!"] = "%s ist aktiv auf %s%s!",
+    ["%s starts in %s on %s%s"] = "%s beginnt in %s auf %s%s",
+    ["no surge to point at"] = "kein Ereignis zum Markieren",
+    ["this surge's location isn't known yet - it's learned the first time each surge runs"] = "Die Position dieses Ereignisses ist noch unbekannt - sie wird beim ersten Auftreten gelernt",
+    ["waypoint set: %s (%.1f, %.1f)%s"] = "Wegpunkt gesetzt: %s (%.1f, %.1f)%s",
+    ["couldn't set a waypoint on this map"] = "Auf dieser Karte kann kein Wegpunkt gesetzt werden",
+    ["not in a group - announcing to zone chat instead"] = "Nicht in einer Gruppe - Ank\195\188ndigung stattdessen im Zonenchat",
+    ["couldn't find the zone General channel - announcing in /say instead"] = "Allgemein-Kanal nicht gefunden - Ank\195\188ndigung stattdessen per /sagen",
+    ["nothing to announce"] = "nichts anzuk\195\188ndigen",
+    ["audio alert ON"] = "Tonsignal AN",
+    ["audio alert OFF"] = "Tonsignal AUS",
+  },
+  frFR = {
+    ["Starts in %s"] = "Commence dans %s",
+    ["Active"] = "Actif",
+    ["ends in %s"] = "se termine dans %s",
+    ["Next: %s in %s"] = "Suivant : %s dans %s",
+    ["Waypoint"] = "Point de rep\195\168re",
+    ["Announce"] = "Annoncer",
+    ["Settings"] = "Param\195\168tres",
+    ["Audio alert when a surge starts"] = "Alerte sonore au d\195\169but d'un \195\169v\195\169nement",
+    ["Announce to"] = "Annoncer dans",
+    ["Zone chat"] = "Canal de zone",
+    ["Group (party/raid/instance)"] = "Groupe (groupe/raid/instance)",
+    ["%s is live!"] = "%s a commenc\195\169 !",
+    ["%s is active on %s%s - ends in %s!"] = "%s est actif sur %s%s - se termine dans %s !",
+    ["%s is active on %s%s!"] = "%s est actif sur %s%s !",
+    ["%s starts in %s on %s%s"] = "%s commence dans %s sur %s%s",
+    ["no surge to point at"] = "aucun \195\169v\195\169nement \195\160 rep\195\169rer",
+    ["this surge's location isn't known yet - it's learned the first time each surge runs"] = "La position de cet \195\169v\195\169nement est encore inconnue - elle sera apprise \195\160 sa premi\195\168re apparition",
+    ["waypoint set: %s (%.1f, %.1f)%s"] = "point de rep\195\168re plac\195\169 : %s (%.1f, %.1f)%s",
+    ["couldn't set a waypoint on this map"] = "impossible de placer un point de rep\195\168re sur cette carte",
+    ["not in a group - announcing to zone chat instead"] = "pas en groupe - annonce dans le canal de zone",
+    ["couldn't find the zone General channel - announcing in /say instead"] = "canal G\195\169n\195\169ral introuvable - annonce en /dire",
+    ["nothing to announce"] = "rien \195\160 annoncer",
+    ["audio alert ON"] = "alerte sonore ACTIV\195\137E",
+    ["audio alert OFF"] = "alerte sonore D\195\137SACTIV\195\137E",
+  },
+  esES = {
+    ["Starts in %s"] = "Comienza en %s",
+    ["Active"] = "Activo",
+    ["ends in %s"] = "termina en %s",
+    ["Next: %s in %s"] = "Siguiente: %s en %s",
+    ["Waypoint"] = "Punto de ruta",
+    ["Announce"] = "Anunciar",
+    ["Settings"] = "Ajustes",
+    ["Audio alert when a surge starts"] = "Alerta de sonido cuando comience un evento",
+    ["Announce to"] = "Anunciar en",
+    ["Zone chat"] = "Chat de zona",
+    ["Group (party/raid/instance)"] = "Grupo (grupo/banda/instancia)",
+    ["%s is live!"] = "\194\161%s ha comenzado!",
+    ["%s is active on %s%s - ends in %s!"] = "\194\161%s est\195\161 activo en %s%s - termina en %s!",
+    ["%s is active on %s%s!"] = "\194\161%s est\195\161 activo en %s%s!",
+    ["%s starts in %s on %s%s"] = "%s comienza en %s en %s%s",
+    ["no surge to point at"] = "no hay ning\195\186n evento que marcar",
+    ["this surge's location isn't known yet - it's learned the first time each surge runs"] = "La ubicaci\195\179n de este evento a\195\186n no se conoce - se aprende la primera vez que aparece",
+    ["waypoint set: %s (%.1f, %.1f)%s"] = "punto de ruta fijado: %s (%.1f, %.1f)%s",
+    ["couldn't set a waypoint on this map"] = "no se puede fijar un punto de ruta en este mapa",
+    ["not in a group - announcing to zone chat instead"] = "no est\195\161s en grupo - anunciando en el chat de zona",
+    ["couldn't find the zone General channel - announcing in /say instead"] = "no se encontr\195\179 el canal General - anunciando por /decir",
+    ["nothing to announce"] = "nada que anunciar",
+    ["audio alert ON"] = "alerta de sonido ACTIVADA",
+    ["audio alert OFF"] = "alerta de sonido DESACTIVADA",
+  },
+  ptBR = {
+    ["Starts in %s"] = "Come\195\167a em %s",
+    ["Active"] = "Ativo",
+    ["ends in %s"] = "termina em %s",
+    ["Next: %s in %s"] = "Pr\195\179ximo: %s em %s",
+    ["Waypoint"] = "Ponto de rota",
+    ["Announce"] = "Anunciar",
+    ["Settings"] = "Configura\195\167\195\181es",
+    ["Audio alert when a surge starts"] = "Alerta sonoro quando um evento come\195\167ar",
+    ["Announce to"] = "Anunciar em",
+    ["Zone chat"] = "Chat da zona",
+    ["Group (party/raid/instance)"] = "Grupo (grupo/raide/inst\195\162ncia)",
+    ["%s is live!"] = "%s come\195\167ou!",
+    ["%s is active on %s%s - ends in %s!"] = "%s est\195\161 ativo em %s%s - termina em %s!",
+    ["%s is active on %s%s!"] = "%s est\195\161 ativo em %s%s!",
+    ["%s starts in %s on %s%s"] = "%s come\195\167a em %s em %s%s",
+    ["no surge to point at"] = "nenhum evento para marcar",
+    ["this surge's location isn't known yet - it's learned the first time each surge runs"] = "A localiza\195\167\195\163o deste evento ainda n\195\163o \195\169 conhecida - ela \195\169 aprendida na primeira vez que ele ocorre",
+    ["waypoint set: %s (%.1f, %.1f)%s"] = "ponto de rota definido: %s (%.1f, %.1f)%s",
+    ["couldn't set a waypoint on this map"] = "n\195\163o foi poss\195\173vel definir um ponto de rota neste mapa",
+    ["not in a group - announcing to zone chat instead"] = "fora de grupo - anunciando no chat da zona",
+    ["couldn't find the zone General channel - announcing in /say instead"] = "canal Geral n\195\163o encontrado - anunciando em /dizer",
+    ["nothing to announce"] = "nada para anunciar",
+    ["audio alert ON"] = "alerta sonoro LIGADO",
+    ["audio alert OFF"] = "alerta sonoro DESLIGADO",
+  },
+  ruRU = {
+    ["Starts in %s"] = "\208\157\208\176\209\135\208\189\209\145\209\130\209\129\209\143 \209\135\208\181\209\128\208\181\208\183 %s",
+    ["Active"] = "\208\152\208\180\209\145\209\130",
+    ["ends in %s"] = "\208\183\208\176\208\186\208\190\208\189\209\135\208\184\209\130\209\129\209\143 \209\135\208\181\209\128\208\181\208\183 %s",
+    ["Next: %s in %s"] = "\208\148\208\176\208\187\208\181\208\181: %s \209\135\208\181\209\128\208\181\208\183 %s",
+    ["Waypoint"] = "\208\156\208\181\209\130\208\186\208\176",
+    ["Announce"] = "\208\158\208\177\209\138\209\143\208\178\208\184\209\130\209\140",
+    ["Settings"] = "\208\157\208\176\209\129\209\130\209\128\208\190\208\185\208\186\208\184",
+    ["Audio alert when a surge starts"] = "\208\151\208\178\209\131\208\186\208\190\208\178\208\190\208\185 \209\129\208\184\208\179\208\189\208\176\208\187 \208\191\209\128\208\184 \208\189\208\176\209\135\208\176\208\187\208\181 \209\129\208\190\208\177\209\139\209\130\208\184\209\143",
+    ["Announce to"] = "\208\158\208\177\209\138\209\143\208\178\208\187\209\143\209\130\209\140 \208\178",
+    ["Zone chat"] = "\208\167\208\176\209\130 \208\183\208\190\208\189\209\139",
+    ["Group (party/raid/instance)"] = "\208\147\209\128\209\131\208\191\208\191\208\176 (\208\179\209\128\209\131\208\191\208\191\208\176/\209\128\208\181\208\185\208\180/\208\191\208\190\208\180\208\183\208\181\208\188\208\181\208\187\209\140\208\181)",
+    ["%s is live!"] = "%s \208\189\208\176\209\135\208\176\208\187\208\190\209\129\209\140!",
+    ["%s is active on %s%s - ends in %s!"] = "%s \208\184\208\180\209\145\209\130: %s%s - \208\183\208\176\208\186\208\190\208\189\209\135\208\184\209\130\209\129\209\143 \209\135\208\181\209\128\208\181\208\183 %s!",
+    ["%s is active on %s%s!"] = "%s \208\184\208\180\209\145\209\130: %s%s!",
+    ["%s starts in %s on %s%s"] = "%s \208\189\208\176\209\135\208\189\209\145\209\130\209\129\209\143 \209\135\208\181\209\128\208\181\208\183 %s: %s%s",
+    ["no surge to point at"] = "\208\189\208\181\209\130 \209\129\208\190\208\177\209\139\209\130\208\184\209\143 \208\180\208\187\209\143 \208\188\208\181\209\130\208\186\208\184",
+    ["this surge's location isn't known yet - it's learned the first time each surge runs"] = "\208\160\208\176\209\129\208\191\208\190\208\187\208\190\208\182\208\181\208\189\208\184\208\181 \209\141\209\130\208\190\208\179\208\190 \209\129\208\190\208\177\209\139\209\130\208\184\209\143 \208\191\208\190\208\186\208\176 \208\189\208\181\208\184\208\183\208\178\208\181\209\129\209\130\208\189\208\190 - \208\190\208\189\208\190 \208\190\208\191\209\128\208\181\208\180\208\181\208\187\209\143\208\181\209\130\209\129\209\143 \208\191\209\128\208\184 \208\181\208\179\208\190 \208\191\208\181\209\128\208\178\208\190\208\188 \208\183\208\176\208\191\209\131\209\129\208\186\208\181",
+    ["waypoint set: %s (%.1f, %.1f)%s"] = "\208\188\208\181\209\130\208\186\208\176 \209\131\209\129\209\130\208\176\208\189\208\190\208\178\208\187\208\181\208\189\208\176: %s (%.1f, %.1f)%s",
+    ["couldn't set a waypoint on this map"] = "\208\189\208\181\208\187\209\140\208\183\209\143 \208\191\208\190\209\129\209\130\208\176\208\178\208\184\209\130\209\140 \208\188\208\181\209\130\208\186\209\131 \208\189\208\176 \209\141\209\130\208\190\208\185 \208\186\208\176\209\128\209\130\208\181",
+    ["not in a group - announcing to zone chat instead"] = "\208\178\209\139 \208\189\208\181 \208\178 \208\179\209\128\209\131\208\191\208\191\208\181 - \208\190\208\177\209\138\209\143\208\178\208\187\208\181\208\189\208\184\208\181 \208\178 \209\135\208\176\209\130 \208\183\208\190\208\189\209\139",
+    ["couldn't find the zone General channel - announcing in /say instead"] = "\208\186\208\176\208\189\208\176\208\187 \194\171\208\158\208\177\209\137\208\184\208\185\194\187 \208\189\208\181 \208\189\208\176\208\185\208\180\208\181\208\189 - \208\190\208\177\209\138\209\143\208\178\208\187\208\181\208\189\208\184\208\181 \208\178 /\209\129\208\186\208\176\208\183\208\176\209\130\209\140",
+    ["nothing to announce"] = "\208\189\208\181\209\135\208\181\208\179\208\190 \208\190\208\177\209\138\209\143\208\178\208\187\209\143\209\130\209\140",
+    ["audio alert ON"] = "\208\183\208\178\209\131\208\186\208\190\208\178\208\190\208\185 \209\129\208\184\208\179\208\189\208\176\208\187 \208\146\208\154\208\155",
+    ["audio alert OFF"] = "\208\183\208\178\209\131\208\186\208\190\208\178\208\190\208\185 \209\129\208\184\208\179\208\189\208\176\208\187 \208\146\208\171\208\154\208\155",
+  },
+  itIT = {
+    ["Starts in %s"] = "Inizia tra %s",
+    ["Active"] = "Attivo",
+    ["ends in %s"] = "termina tra %s",
+    ["Next: %s in %s"] = "Prossimo: %s tra %s",
+    ["Waypoint"] = "Punto di rotta",
+    ["Announce"] = "Annuncia",
+    ["Settings"] = "Impostazioni",
+    ["Audio alert when a surge starts"] = "Avviso sonoro all'inizio di un evento",
+    ["Announce to"] = "Annuncia in",
+    ["Zone chat"] = "Chat di zona",
+    ["Group (party/raid/instance)"] = "Gruppo (gruppo/incursione/istanza)",
+    ["%s is live!"] = "%s \195\168 iniziato!",
+    ["%s is active on %s%s - ends in %s!"] = "%s \195\168 attivo su %s%s - termina tra %s!",
+    ["%s is active on %s%s!"] = "%s \195\168 attivo su %s%s!",
+    ["%s starts in %s on %s%s"] = "%s inizia tra %s su %s%s",
+    ["no surge to point at"] = "nessun evento da segnare",
+    ["this surge's location isn't known yet - it's learned the first time each surge runs"] = "La posizione di questo evento non \195\168 ancora nota - viene appresa la prima volta che si verifica",
+    ["waypoint set: %s (%.1f, %.1f)%s"] = "punto di rotta impostato: %s (%.1f, %.1f)%s",
+    ["couldn't set a waypoint on this map"] = "impossibile impostare un punto di rotta su questa mappa",
+    ["not in a group - announcing to zone chat instead"] = "non sei in un gruppo - annuncio nella chat di zona",
+    ["couldn't find the zone General channel - announcing in /say instead"] = "canale Generale non trovato - annuncio in /dire",
+    ["nothing to announce"] = "niente da annunciare",
+    ["audio alert ON"] = "avviso sonoro ATTIVO",
+    ["audio alert OFF"] = "avviso sonoro DISATTIVATO",
+  },
+  koKR = {
+    ["Starts in %s"] = "%s \237\155\132 \236\139\156\236\158\145",
+    ["Active"] = "\236\167\132\237\150\137 \236\164\145",
+    ["ends in %s"] = "%s \237\155\132 \236\162\133\235\163\140",
+    ["Next: %s in %s"] = "\235\139\164\236\157\140: %s (%s \237\155\132)",
+    ["Waypoint"] = "\236\167\128\236\160\144 \237\145\156\236\139\156",
+    ["Announce"] = "\236\149\140\235\166\172\234\184\176",
+    ["Settings"] = "\236\132\164\236\160\149",
+    ["Audio alert when a surge starts"] = "\236\157\180\235\178\164\237\138\184 \236\139\156\236\158\145 \236\139\156 \236\134\140\235\166\172 \236\149\140\235\166\188",
+    ["Announce to"] = "\236\149\140\235\166\180 \235\140\128\236\131\129",
+    ["Zone chat"] = "\236\167\128\236\151\173 \236\177\132\237\140\133",
+    ["Group (party/raid/instance)"] = "\237\140\140\237\139\176 (\237\140\140\237\139\176/\234\179\181\234\178\169\235\140\128/\236\157\184\236\138\164\237\132\180\236\138\164)",
+    ["%s is live!"] = "%s \236\139\156\236\158\145!",
+    ["%s is active on %s%s - ends in %s!"] = "%s \236\167\132\237\150\137 \236\164\145 - %s%s - %s \237\155\132 \236\162\133\235\163\140!",
+    ["%s is active on %s%s!"] = "%s \236\167\132\237\150\137 \236\164\145 - %s%s!",
+    ["%s starts in %s on %s%s"] = "%s - %s \237\155\132 \236\139\156\236\158\145 - %s%s",
+    ["no surge to point at"] = "\237\145\156\236\139\156\237\149\160 \236\157\180\235\178\164\237\138\184\234\176\128 \236\151\134\236\138\181\235\139\136\235\139\164",
+    ["this surge's location isn't known yet - it's learned the first time each surge runs"] = "\236\157\180 \236\157\180\235\178\164\237\138\184\236\157\152 \236\156\132\236\185\152\235\138\148 \236\149\132\236\167\129 \236\149\140 \236\136\152 \236\151\134\236\138\181\235\139\136\235\139\164 - \236\178\152\236\140\152 \235\176\156\236\131\157 \236\139\156 \236\158\144\235\143\153\236\156\188\235\161\156 \234\184\176\235\161\157\235\144\169\235\139\136\235\139\164",
+    ["waypoint set: %s (%.1f, %.1f)%s"] = "\236\167\128\236\160\144 \236\132\164\236\160\149: %s (%.1f, %.1f)%s",
+    ["couldn't set a waypoint on this map"] = "\236\157\180 \236\167\128\235\143\132\236\151\144\235\138\148 \236\167\128\236\160\144\236\157\132 \236\132\164\236\160\149\237\149\160 \236\136\152 \236\151\134\236\138\181\235\139\136\235\139\164",
+    ["not in a group - announcing to zone chat instead"] = "\237\140\140\237\139\176\236\151\144 \236\134\141\237\149\180 \236\158\136\236\167\128 \236\149\138\236\157\140 - \236\167\128\236\151\173 \236\177\132\237\140\133\236\156\188\235\161\156 \236\149\140\235\166\189\235\139\136\235\139\164",
+    ["couldn't find the zone General channel - announcing in /say instead"] = "\236\157\188\235\176\152 \236\177\132\235\132\144\236\157\132 \236\176\190\236\157\132 \236\136\152 \236\151\134\236\138\181\235\139\136\235\139\164 - /\235\167\144\237\149\152\234\184\176\235\161\156 \236\149\140\235\166\189\235\139\136\235\139\164",
+    ["nothing to announce"] = "\236\149\140\235\166\180 \235\130\180\236\154\169\236\157\180 \236\151\134\236\138\181\235\139\136\235\139\164",
+    ["audio alert ON"] = "\236\134\140\235\166\172 \236\149\140\235\166\188 \236\188\156\236\167\144",
+    ["audio alert OFF"] = "\236\134\140\235\166\172 \236\149\140\235\166\188 \234\186\188\236\167\144",
+  },
+  zhCN = {
+    ["Starts in %s"] = "%s\229\144\142\229\188\128\229\167\139",
+    ["Active"] = "\232\191\155\232\161\140\228\184\173",
+    ["ends in %s"] = "%s\229\144\142\231\187\147\230\157\159",
+    ["Next: %s in %s"] = "\228\184\139\228\184\128\228\184\170\239\188\154%s\239\188\136%s\229\144\142\239\188\137",
+    ["Waypoint"] = "\232\183\175\229\190\132\231\130\185",
+    ["Announce"] = "\233\128\154\230\138\165",
+    ["Settings"] = "\232\174\190\231\189\174",
+    ["Audio alert when a surge starts"] = "\228\186\139\228\187\182\229\188\128\229\167\139\230\151\182\230\146\173\230\148\190\230\143\144\231\164\186\233\159\179",
+    ["Announce to"] = "\233\128\154\230\138\165\229\136\176",
+    ["Zone chat"] = "\229\140\186\229\159\159\233\162\145\233\129\147",
+    ["Group (party/raid/instance)"] = "\233\152\159\228\188\141\239\188\136\229\176\143\233\152\159/\229\155\162\233\152\159/\229\137\175\230\156\172\239\188\137",
+    ["%s is live!"] = "%s\229\183\178\229\188\128\229\167\139\239\188\129",
+    ["%s is active on %s%s - ends in %s!"] = "%s\230\173\163\229\156\168%s\232\191\155\232\161\140%s - %s\229\144\142\231\187\147\230\157\159\239\188\129",
+    ["%s is active on %s%s!"] = "%s\230\173\163\229\156\168%s\232\191\155\232\161\140%s\239\188\129",
+    ["%s starts in %s on %s%s"] = "%s\229\176\134\228\186\142%s\229\144\142\229\156\168%s\229\188\128\229\167\139%s",
+    ["no surge to point at"] = "\230\178\161\230\156\137\229\143\175\230\160\135\232\174\176\231\154\132\228\186\139\228\187\182",
+    ["this surge's location isn't known yet - it's learned the first time each surge runs"] = "\232\175\165\228\186\139\228\187\182\231\154\132\228\189\141\231\189\174\229\176\154\230\156\170\231\159\165\230\153\147 - \233\166\150\230\172\161\229\135\186\231\142\176\230\151\182\228\188\154\232\135\170\229\138\168\232\174\176\229\189\149",
+    ["waypoint set: %s (%.1f, %.1f)%s"] = "\229\183\178\232\174\190\231\189\174\232\183\175\229\190\132\231\130\185\239\188\154%s\239\188\136%.1f, %.1f\239\188\137%s",
+    ["couldn't set a waypoint on this map"] = "\230\151\160\230\179\149\229\156\168\230\173\164\229\156\176\229\155\190\232\174\190\231\189\174\232\183\175\229\190\132\231\130\185",
+    ["not in a group - announcing to zone chat instead"] = "\228\184\141\229\156\168\233\152\159\228\188\141\228\184\173 - \230\148\185\228\184\186\233\128\154\230\138\165\229\136\176\229\140\186\229\159\159\233\162\145\233\129\147",
+    ["couldn't find the zone General channel - announcing in /say instead"] = "\230\156\170\230\137\190\229\136\176\231\187\188\229\144\136\233\162\145\233\129\147 - \230\148\185\231\148\168/\232\175\180\232\175\157\233\128\154\230\138\165",
+    ["nothing to announce"] = "\230\178\161\230\156\137\229\143\175\233\128\154\230\138\165\231\154\132\229\134\133\229\174\185",
+    ["audio alert ON"] = "\230\143\144\231\164\186\233\159\179\229\183\178\229\188\128\229\144\175",
+    ["audio alert OFF"] = "\230\143\144\231\164\186\233\159\179\229\183\178\229\133\179\233\151\173",
+  },
+  zhTW = {
+    ["Starts in %s"] = "%s\229\190\140\233\150\139\229\167\139",
+    ["Active"] = "\233\128\178\232\161\140\228\184\173",
+    ["ends in %s"] = "%s\229\190\140\231\181\144\230\157\159",
+    ["Next: %s in %s"] = "\228\184\139\228\184\128\229\128\139\239\188\154%s\239\188\136%s\229\190\140\239\188\137",
+    ["Waypoint"] = "\232\183\175\229\190\145\233\187\158",
+    ["Announce"] = "\233\128\154\229\160\177",
+    ["Settings"] = "\232\168\173\229\174\154",
+    ["Audio alert when a surge starts"] = "\228\186\139\228\187\182\233\150\139\229\167\139\230\153\130\230\146\173\230\148\190\230\143\144\231\164\186\233\159\179",
+    ["Announce to"] = "\233\128\154\229\160\177\232\135\179",
+    ["Zone chat"] = "\229\141\128\229\159\159\233\160\187\233\129\147",
+    ["Group (party/raid/instance)"] = "\233\154\138\228\188\141\239\188\136\229\176\143\233\154\138/\229\156\152\233\154\138/\229\137\175\230\156\172\239\188\137",
+    ["%s is live!"] = "%s\229\183\178\233\150\139\229\167\139\239\188\129",
+    ["%s is active on %s%s - ends in %s!"] = "%s\230\173\163\229\156\168%s\233\128\178\232\161\140%s - %s\229\190\140\231\181\144\230\157\159\239\188\129",
+    ["%s is active on %s%s!"] = "%s\230\173\163\229\156\168%s\233\128\178\232\161\140%s\239\188\129",
+    ["%s starts in %s on %s%s"] = "%s\229\176\135\230\150\188%s\229\190\140\229\156\168%s\233\150\139\229\167\139%s",
+    ["no surge to point at"] = "\230\178\146\230\156\137\229\143\175\230\168\153\232\168\152\231\154\132\228\186\139\228\187\182",
+    ["this surge's location isn't known yet - it's learned the first time each surge runs"] = "\232\169\178\228\186\139\228\187\182\231\154\132\228\189\141\231\189\174\229\176\154\230\156\170\231\159\165\230\155\137 - \233\166\150\230\172\161\229\135\186\231\143\190\230\153\130\230\156\131\232\135\170\229\139\149\232\168\152\233\140\132",
+    ["waypoint set: %s (%.1f, %.1f)%s"] = "\229\183\178\232\168\173\229\174\154\232\183\175\229\190\145\233\187\158\239\188\154%s\239\188\136%.1f, %.1f\239\188\137%s",
+    ["couldn't set a waypoint on this map"] = "\231\132\161\230\179\149\229\156\168\230\173\164\229\156\176\229\156\150\232\168\173\229\174\154\232\183\175\229\190\145\233\187\158",
+    ["not in a group - announcing to zone chat instead"] = "\228\184\141\229\156\168\233\154\138\228\188\141\228\184\173 - \230\148\185\231\130\186\233\128\154\229\160\177\232\135\179\229\141\128\229\159\159\233\160\187\233\129\147",
+    ["couldn't find the zone General channel - announcing in /say instead"] = "\230\137\190\228\184\141\229\136\176\231\182\156\229\144\136\233\160\187\233\129\147 - \230\148\185\231\148\168/\232\170\170\232\169\177\233\128\154\229\160\177",
+    ["nothing to announce"] = "\230\178\146\230\156\137\229\143\175\233\128\154\229\160\177\231\154\132\229\133\167\229\174\185",
+    ["audio alert ON"] = "\230\143\144\231\164\186\233\159\179\229\183\178\233\150\139\229\149\159",
+    ["audio alert OFF"] = "\230\143\144\231\164\186\233\159\179\229\183\178\233\151\156\233\150\137",
+  },
+}
+LOCALES.esMX = LOCALES.esES
+local L = setmetatable(LOCALES[GetLocale()] or {}, { __index = function(_, k) return k end })
 
 local CS = CreateFrame("Frame")
 local ui
@@ -185,7 +430,7 @@ local function maybeAlert()
   lastAlertKey = a.key
   if CursedSurgesDB and CursedSurgesDB.sound then
     PlaySound(SOUNDKIT.READY_CHECK, "Master")
-    chat(eventName(a) .. " is live!")
+    chat(safefmt(L["%s is live!"], eventName(a)) or (eventName(a) .. "!"))
   end
 end
 
@@ -204,10 +449,10 @@ end
 
 local function setWaypoint()
   local ev = targetEvent()
-  if not ev then chat("no surge to point at") return end
+  if not ev then chat(L["no surge to point at"]) return end
   local mapID, x, y = eventPosition(ev)
   if not mapID then
-    chat("this surge's location isn't known yet — it's learned the first time each surge runs")
+    chat(L["this surge's location isn't known yet - it's learned the first time each surge runs"])
     return
   end
   local name = eventName(ev)
@@ -224,18 +469,25 @@ local function setWaypoint()
     tomtom = ok
   end
   if pinned or tomtom then
-    chat(safefmt("waypoint set: %s (%.1f, %.1f)%s", name, x * 100, y * 100,
-      tomtom and " + TomTom" or "") or "waypoint set")
+    chat(safefmt(L["waypoint set: %s (%.1f, %.1f)%s"], name, x * 100, y * 100,
+      tomtom and " + TomTom" or "") or "OK")
   else
-    chat("couldn't set a waypoint on this map")
+    chat(L["couldn't set a waypoint on this map"])
   end
 end
 
 local function zoneChannelIndex()
+  -- locale-safe: the client reports the zone's server channels in its own
+  -- language (General first); match that against the joined channel list,
+  -- with the English name as a fallback
+  local generalName = EnumerateServerChannels and (EnumerateServerChannels()) or nil
   local list = { GetChannelList() }
   for i = 1, #list, 3 do
     local id, name = list[i], list[i + 1]
-    local ok, hit = pcall(function() return name:find("General", 1, true) ~= nil end)
+    local ok, hit = pcall(function()
+      if generalName and name:find(generalName, 1, true) then return true end
+      return name:find("General", 1, true) ~= nil
+    end)
     if ok and hit then return id end
   end
 end
@@ -259,13 +511,15 @@ local function buildAnnounce()
     local link = pinLink(mapID, x, y)
     where = safefmt(" at %.1f, %.1f %s", x * 100, y * 100, link or "") or ""
   end
+  local mi = C_Map.GetMapInfo(COILED_ISLE)
+  local zone = (mi and mi.name) or "The Coiled Isle"
   if state.active == ev then
     if ev.endT then
-      return safefmt("%s is active on the Coiled Isle%s — ends in %s!", name, where, fmtDuration(ev.endT - now))
+      return safefmt(L["%s is active on %s%s - ends in %s!"], name, zone, where, fmtDuration(ev.endT - now))
     end
-    return safefmt("%s is active on the Coiled Isle%s!", name, where)
+    return safefmt(L["%s is active on %s%s!"], name, zone, where)
   else
-    return safefmt("%s starts in %s on the Coiled Isle%s", name, fmtDuration(ev.start - now), where)
+    return safefmt(L["%s starts in %s on %s%s"], name, fmtDuration(ev.start - now), zone, where)
   end
 end
 
@@ -278,14 +532,14 @@ local function openSettingsMenu(anchor)
     end
     MenuUtil.CreateContextMenu(anchor, function(_, root)
       root:CreateTitle("Cursed Surges")
-      root:CreateCheckbox("Audio alert when a surge starts",
+      root:CreateCheckbox(L["Audio alert when a surge starts"],
         function() return CursedSurgesDB.sound end,
         function() CursedSurgesDB.sound = not CursedSurgesDB.sound end)
-      root:CreateTitle("Announce to")
-      root:CreateRadio("Zone chat",
+      root:CreateTitle(L["Announce to"])
+      root:CreateRadio(L["Zone chat"],
         function() return CursedSurgesDB.announceTarget ~= "group" end,
         function() CursedSurgesDB.announceTarget = "zone" end)
-      root:CreateRadio("Group (party/raid/instance)",
+      root:CreateRadio(L["Group (party/raid/instance)"],
         function() return CursedSurgesDB.announceTarget == "group" end,
         function() CursedSurgesDB.announceTarget = "group" end)
     end)
@@ -339,7 +593,7 @@ local function ensureUI()
   gear:SetScript("OnClick", function() openSettingsMenu(gear) end)
   gear:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
-    GameTooltip:SetText("Settings")
+    GameTooltip:SetText(L["Settings"])
     GameTooltip:Show()
   end)
   gear:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -364,18 +618,18 @@ local function ensureUI()
   ui.waypointBtn = CreateFrame("Button", nil, ui, "UIPanelButtonTemplate")
   ui.waypointBtn:SetSize(100, 22)
   ui.waypointBtn:SetPoint("BOTTOMLEFT", 10, 9)
-  ui.waypointBtn:SetText("Waypoint")
+  ui.waypointBtn:SetText(L["Waypoint"])
   ui.waypointBtn:SetScript("OnClick", setWaypoint)
 
   ui.announceBtn = CreateFrame("Button", nil, ui, "UIPanelButtonTemplate")
   ui.announceBtn:SetSize(100, 22)
   ui.announceBtn:SetPoint("BOTTOMRIGHT", -10, 9)
-  ui.announceBtn:SetText("Announce")
+  ui.announceBtn:SetText(L["Announce"])
   -- SendChatMessage to a public channel needs a hardware event: it must run
   -- directly inside this OnClick, not via any timer/callback indirection
   ui.announceBtn:SetScript("OnClick", function()
     local msg = buildAnnounce()
-    if not msg then chat("nothing to announce") return end
+    if not msg then chat(L["nothing to announce"]) return end
     -- "group" resolves to the chat the player is actually in; solo falls
     -- through to zone with a note
     if CursedSurgesDB.announceTarget == "group" then
@@ -391,11 +645,11 @@ local function ensureUI()
         SendChatMessage(msg, chatType)
         return
       end
-      chat("not in a group — announcing to zone chat instead")
+      chat(L["not in a group - announcing to zone chat instead"])
     end
     local idx = zoneChannelIndex()
     if not idx then
-      chat("couldn't find the zone General channel — announcing in /say instead")
+      chat(L["couldn't find the zone General channel - announcing in /say instead"])
       SendChatMessage(msg, "SAY")
       return
     end
@@ -428,18 +682,18 @@ local function refreshUI()
   if state.active then
     ui.name:SetText(eventName(state.active))
     if state.active.endT then
-      ui.timer:SetText("|cff33ff66Active|r — ends in " .. fmtDuration(state.active.endT - now))
+      ui.timer:SetText("|cff33ff66" .. L["Active"] .. "|r — " .. (safefmt(L["ends in %s"], fmtDuration(state.active.endT - now)) or ""))
     else
-      ui.timer:SetText("|cff33ff66Active now|r")
+      ui.timer:SetText("|cff33ff66" .. L["Active"] .. "|r")
     end
     if state.nextEv then
-      ui.nextLine:SetText("Next: " .. eventName(state.nextEv) .. " in " .. fmtDuration(state.nextEv.start - now))
+      ui.nextLine:SetText(safefmt(L["Next: %s in %s"], eventName(state.nextEv), fmtDuration(state.nextEv.start - now)) or "")
     else
       ui.nextLine:SetText("")
     end
   else
     ui.name:SetText(eventName(state.nextEv))
-    ui.timer:SetText("Starts in |cffffcc00" .. fmtDuration(state.nextEv.start - now) .. "|r")
+    ui.timer:SetText(safefmt(L["Starts in %s"], "|cffffcc00" .. fmtDuration(state.nextEv.start - now) .. "|r") or "")
     ui.nextLine:SetText("")
   end
   ui:Show()
@@ -668,7 +922,7 @@ SlashCmdList.CURSEDSURGES = function(msg)
     else
       CursedSurgesDB.sound = not CursedSurgesDB.sound
     end
-    chat("audio alert " .. (CursedSurgesDB.sound and "ON" or "OFF"))
+    chat(CursedSurgesDB.sound and L["audio alert ON"] or L["audio alert OFF"])
   elseif cmd == "announce" then
     if rest == "zone" or rest == "group" then
       CursedSurgesDB.announceTarget = rest

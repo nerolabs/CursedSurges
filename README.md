@@ -26,6 +26,10 @@ The world map's Events tab is backed by `C_EventScheduler`; CursedSurges request
 
 Right-clicking the panel opens the same settings as a menu.
 
+## Localization
+
+UI, alerts, and announces are localized for **deDE, esES, esMX, frFR, itIT, koKR, ptBR, ruRU, zhCN, zhTW** (machine-assisted — corrections welcome via PR/issue). Surge names and the zone name come from the game client itself, so they're always in your language once each surge has been seen. The zone General channel is found locale-independently.
+
 ## Installation
 
 Install from CurseForge or Wago, or drop the `CursedSurges` folder into `Interface/AddOns`.
