@@ -2,7 +2,7 @@
 ## Title: CursedSurges
 ## Notes: Countdown, waypoint, and zone announce for Cursed Surge events on the Coiled Isle
 ## Author: Andrew
-## Version: 1.2.0
+## Version: 1.3.0
 ## SavedVariables: CursedSurgesDB
 ## IconTexture: Interface\Icons\Spell_Nature_CallStorm
 ## X-Curse-Project-ID: 1655112

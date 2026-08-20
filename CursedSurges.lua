@@ -13,7 +13,7 @@
 -- cache them in SavedVariables — after one full lap the addon knows all five.
 
 local ADDON_NAME = ...
-local VERSION = "1.2.0"
+local VERSION = "1.3.0"
 local COILED_ISLE = 2512
 
 local SURGE_BLOCK = 2700  -- scheduler slot length (45 min)
@@ -42,6 +42,7 @@ local SURGES = {
 -- Translations are machine-assisted -- corrections welcome on GitHub.
 local LOCALES = {
   deDE = {
+    ["Only show on %s"] = "Nur auf %s anzeigen",
     ["Starts in %s"] = "Beginnt in %s",
     ["Active"] = "Aktiv",
     ["ends in %s"] = "endet in %s",
@@ -68,6 +69,7 @@ local LOCALES = {
     ["audio alert OFF"] = "Tonsignal AUS",
   },
   frFR = {
+    ["Only show on %s"] = "Afficher uniquement sur %s",
     ["Starts in %s"] = "Commence dans %s",
     ["Active"] = "Actif",
     ["ends in %s"] = "se termine dans %s",
@@ -94,6 +96,7 @@ local LOCALES = {
     ["audio alert OFF"] = "alerte sonore D\195\137SACTIV\195\137E",
   },
   esES = {
+    ["Only show on %s"] = "Mostrar solo en %s",
     ["Starts in %s"] = "Comienza en %s",
     ["Active"] = "Activo",
     ["ends in %s"] = "termina en %s",
@@ -120,6 +123,7 @@ local LOCALES = {
     ["audio alert OFF"] = "alerta de sonido DESACTIVADA",
   },
   ptBR = {
+    ["Only show on %s"] = "Mostrar apenas em %s",
     ["Starts in %s"] = "Come\195\167a em %s",
     ["Active"] = "Ativo",
     ["ends in %s"] = "termina em %s",
@@ -146,6 +150,7 @@ local LOCALES = {
     ["audio alert OFF"] = "alerta sonoro DESLIGADO",
   },
   ruRU = {
+    ["Only show on %s"] = "Показывать только в зоне: %s",
     ["Starts in %s"] = "\208\157\208\176\209\135\208\189\209\145\209\130\209\129\209\143 \209\135\208\181\209\128\208\181\208\183 %s",
     ["Active"] = "\208\152\208\180\209\145\209\130",
     ["ends in %s"] = "\208\183\208\176\208\186\208\190\208\189\209\135\208\184\209\130\209\129\209\143 \209\135\208\181\209\128\208\181\208\183 %s",
@@ -172,6 +177,7 @@ local LOCALES = {
     ["audio alert OFF"] = "\208\183\208\178\209\131\208\186\208\190\208\178\208\190\208\185 \209\129\208\184\208\179\208\189\208\176\208\187 \208\146\208\171\208\154\208\155",
   },
   itIT = {
+    ["Only show on %s"] = "Mostra solo su %s",
     ["Starts in %s"] = "Inizia tra %s",
     ["Active"] = "Attivo",
     ["ends in %s"] = "termina tra %s",
@@ -198,6 +204,7 @@ local LOCALES = {
     ["audio alert OFF"] = "avviso sonoro DISATTIVATO",
   },
   koKR = {
+    ["Only show on %s"] = "%s에서만 표시",
     ["Starts in %s"] = "%s \237\155\132 \236\139\156\236\158\145",
     ["Active"] = "\236\167\132\237\150\137 \236\164\145",
     ["ends in %s"] = "%s \237\155\132 \236\162\133\235\163\140",
@@ -224,6 +231,7 @@ local LOCALES = {
     ["audio alert OFF"] = "\236\134\140\235\166\172 \236\149\140\235\166\188 \234\186\188\236\167\144",
   },
   zhCN = {
+    ["Only show on %s"] = "仅在%s显示",
     ["Starts in %s"] = "%s\229\144\142\229\188\128\229\167\139",
     ["Active"] = "\232\191\155\232\161\140\228\184\173",
     ["ends in %s"] = "%s\229\144\142\231\187\147\230\157\159",
@@ -250,6 +258,7 @@ local LOCALES = {
     ["audio alert OFF"] = "\230\143\144\231\164\186\233\159\179\229\183\178\229\133\179\233\151\173",
   },
   zhTW = {
+    ["Only show on %s"] = "僅在%s顯示",
     ["Starts in %s"] = "%s\229\190\140\233\150\139\229\167\139",
     ["Active"] = "\233\128\178\232\161\140\228\184\173",
     ["ends in %s"] = "%s\229\190\140\231\181\144\230\157\159",
@@ -419,6 +428,18 @@ local function collectEvents()
   if active then learn(active.areaPoiID) end
 end
 
+-- zone gate: true when the player is on the Coiled Isle or one of its sub-maps
+local function onCoiledIsle()
+  local mapID = C_Map.GetBestMapForUnit("player")
+  for _ = 1, 10 do
+    if not mapID or mapID <= 0 then return false end
+    if mapID == COILED_ISLE then return true end
+    local mi = C_Map.GetMapInfo(mapID)
+    mapID = mi and mi.parentMapID
+  end
+  return false
+end
+
 -- ready-check sound when a surge goes live; deduped by event key so schedule
 -- refreshes can't re-fire it. The key is remembered even with sound off, so
 -- enabling mid-surge doesn't retro-alert.
@@ -427,6 +448,9 @@ local lastAlertKey
 local function maybeAlert()
   local a = state.active
   if not a or a.key == lastAlertKey then return end
+  -- zone-only mode: stay silent out of zone WITHOUT recording the key, so
+  -- entering the zone mid-surge still alerts
+  if CursedSurgesDB and CursedSurgesDB.onlyInZone and not onCoiledIsle() then return end
   lastAlertKey = a.key
   if CursedSurgesDB and CursedSurgesDB.sound then
     PlaySound(SOUNDKIT.READY_CHECK, "Master")
@@ -535,6 +559,11 @@ local function openSettingsMenu(anchor)
       root:CreateCheckbox(L["Audio alert when a surge starts"],
         function() return CursedSurgesDB.sound end,
         function() CursedSurgesDB.sound = not CursedSurgesDB.sound end)
+      local mi = C_Map.GetMapInfo(COILED_ISLE)
+      root:CreateCheckbox(safefmt(L["Only show on %s"], (mi and mi.name) or "the Coiled Isle")
+          or "Only show on the Coiled Isle",
+        function() return CursedSurgesDB.onlyInZone end,
+        function() CursedSurgesDB.onlyInZone = not CursedSurgesDB.onlyInZone end)
       root:CreateTitle(L["Announce to"])
       root:CreateRadio(L["Zone chat"],
         function() return CursedSurgesDB.announceTarget ~= "group" end,
@@ -671,7 +700,7 @@ end
 
 local function refreshUI()
   local ev = state.active or state.nextEv
-  if not ev then
+  if not ev or (CursedSurgesDB.onlyInZone and not onCoiledIsle()) then
     if ui then ui:Hide() end
     return
   end
@@ -923,6 +952,16 @@ SlashCmdList.CURSEDSURGES = function(msg)
       CursedSurgesDB.sound = not CursedSurgesDB.sound
     end
     chat(CursedSurgesDB.sound and L["audio alert ON"] or L["audio alert OFF"])
+  elseif cmd == "zoneonly" then
+    if rest == "on" then
+      CursedSurgesDB.onlyInZone = true
+    elseif rest == "off" then
+      CursedSurgesDB.onlyInZone = false
+    else
+      CursedSurgesDB.onlyInZone = not CursedSurgesDB.onlyInZone
+    end
+    chat("zone-only " .. (CursedSurgesDB.onlyInZone
+      and "ON (hidden and silent outside the Coiled Isle)" or "OFF"))
   elseif cmd == "announce" then
     if rest == "zone" or rest == "group" then
       CursedSurgesDB.announceTarget = rest
@@ -933,7 +972,7 @@ SlashCmdList.CURSEDSURGES = function(msg)
   elseif cmd == "debug" then
     debugDump()
   else
-    chat("commands: /surge (toggle), lock, unlock, reset, refresh, sound on|off, announce zone|group, debug — or right-click the panel")
+    chat("commands: /surge (toggle), lock, unlock, reset, refresh, sound on|off, zoneonly on|off, announce zone|group, debug — or the gear icon")
   end
 end
 
@@ -942,6 +981,7 @@ end
 CS:RegisterEvent("ADDON_LOADED")
 CS:RegisterEvent("PLAYER_ENTERING_WORLD")
 CS:RegisterEvent("EVENT_SCHEDULER_UPDATE")
+CS:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 CS:SetScript("OnEvent", function(_, event, arg1)
   if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
     CursedSurgesDB = CursedSurgesDB or {}
@@ -955,7 +995,7 @@ CS:SetScript("OnEvent", function(_, event, arg1)
     if not ticker then
       ticker = C_Timer.NewTicker(1, onTick)
     end
-  elseif event == "EVENT_SCHEDULER_UPDATE" then
+  elseif event == "EVENT_SCHEDULER_UPDATE" or event == "ZONE_CHANGED_NEW_AREA" then
     rebuild()
   end
 end)

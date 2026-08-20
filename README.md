@@ -6,7 +6,8 @@ A small tracker for **Cursed Surge** events on the Coiled Isle (Midnight, patch 
 - **Next surge preview** with its real name while one is active
 - **Waypoint** button: drops a map pin (and a TomTom waypoint if TomTom is installed) at the surge's location — works for upcoming surges too, since every surge has a fixed spot
 - **Announce** button: posts the surge, its coordinates, and a **clickable map pin link** — to zone chat, or to your party/raid/instance chat if you'd rather not spam the zone (right-click the panel to choose)
-- **Audio alert**: the ready-check sound the moment a surge goes live (on by default; toggle in the right-click menu)
+- **Audio alert**: the ready-check sound the moment a surge goes live (on by default; toggle in the settings menu)
+- **Zone-only mode** (off by default): hide the panel and silence the alert while you're away from the Coiled Isle — entering the zone mid-surge still alerts
 
 ## How it works
 
@@ -21,6 +22,7 @@ The world map's Events tab is backed by `C_EventScheduler`; CursedSurges request
 | `/surge reset` | reset position |
 | `/surge refresh` | re-request schedule data |
 | `/surge sound on\|off` | toggle the surge-start audio alert |
+| `/surge zoneonly on\|off` | hide + silence the addon outside the Coiled Isle |
 | `/surge announce zone\|group` | announce to zone chat or party/raid/instance chat |
 | `/surge debug` | copyable diagnostic dump |
 
